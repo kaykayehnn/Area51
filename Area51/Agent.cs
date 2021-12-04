@@ -1,8 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Area51
 {
@@ -27,17 +23,30 @@ namespace Area51
                 int nextAction = random.Next(10);
                 if (nextAction < 6)
                 {
-                    Console.WriteLine($"Agent {ConfidentialityLevel} is walking around the base...");
+                    Console.WriteLine($"{this} is walking around the base...");
                 }
                 else
                 {
                     // Get in elevator
-                    Console.WriteLine($"Agent {ConfidentialityLevel} calls the elevator");
-                    await elevator.Call(this.currentFloor);
+                    Console.WriteLine($"{this} calls the elevator");
+                    await elevator.Call(this.currentFloor, this, () =>
+                    {
+                        // Execute on getting in the elevator
+                        Console.WriteLine($"{this} gets in the elevator...");
+                        var nextFloor = elevator.Floors[random.Next(elevator.Floors.Length)];
+                        Console.WriteLine($"{this} presses the button for floor {nextFloor}");
+                        return nextFloor;
+                    });
+
                 }
             }
         }
 
         public ConfidentialityLevel ConfidentialityLevel { get; }
+
+        public override string ToString()
+        {
+            return $"Agent {ConfidentialityLevel}";
+        }
     }
 }

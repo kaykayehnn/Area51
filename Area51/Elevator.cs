@@ -12,7 +12,7 @@ namespace Area51
         private object @lock;
         private Queue<string> taskQueue;
         private Dictionary<string, TaskCompletionSource> taskDictionary;
-        private List<Agent> agentsInside;
+        private List<Agent> intelInside; // hehe
 
         public Elevator()
         {
@@ -21,23 +21,38 @@ namespace Area51
             this.@lock = new object();
             this.taskQueue = new Queue<string>();
             this.taskDictionary = new Dictionary<string, TaskCompletionSource>();
-            this.agentsInside = new List<Agent>();
+            this.intelInside = new List<Agent>();
         }
 
-        public void Start()
+        public async void Start()
         {
             this.state = ElevatorState.Waiting;
 
             while (this.state != ElevatorState.Closed)
             {
+                string nextFloor = null;
                 lock (this.@lock)
                 {
-                    while (this.taskQueue.TryDequeue(out var task))
-                    {
-                        this.taskDictionary[task].SetResult();
-                        // Execute task..
-                    }
+                    this.taskQueue.TryDequeue(out var task);
+                }
 
+                if (nextFloor != null)
+                {
+                    // Now we have to get from the current floor to the required floor.
+                    // To do that, first we have to find the distance between the floors.
+                    int currentFloorIndex = Array.IndexOf(this.Floors, this.currentFloor);
+                    int nextFloorIndex = Array.IndexOf(this.Floors, nextFloor);
+
+                    int distance = Math.Abs(currentFloorIndex - nextFloorIndex);
+
+                    Console.WriteLine($"The elevator is travelling to floor {nextFloor}...");
+
+                    await Task.Delay(distance * MS_PER_FLOOR);
+
+                    Console.WriteLine($"The elevator arrived at floor {nextFloor}");
+
+                    this.taskDictionary[nextFloor].SetResult();
+                    // Execute task..
                 }
 
                 Task.Delay(1).Wait();
@@ -49,7 +64,7 @@ namespace Area51
             this.state = ElevatorState.Closed;
         }
 
-        public Task Call(string floor)
+        public Task Call(string floor, Agent agent, Func<string> onGettingIn)
         {
             lock (this.@lock)
             {
