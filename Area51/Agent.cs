@@ -29,14 +29,22 @@ namespace Area51
                 {
                     // Get in elevator
                     Console.WriteLine($"{this} calls the elevator");
-                    await elevator.Call(this.currentFloor, this, () =>
+                    try
                     {
-                        // Execute on getting in the elevator
-                        Console.WriteLine($"{this} gets in the elevator...");
-                        var nextFloor = elevator.Floors[random.Next(elevator.Floors.Length)];
-                        Console.WriteLine($"{this} presses the button for floor {nextFloor}");
-                        return nextFloor;
-                    });
+                        await elevator.Call(this.currentFloor, this, () =>
+                        {
+                            // Execute on getting in the elevator
+                            Console.WriteLine($"{this} gets in the elevator...");
+                            var nextFloor = elevator.Floors[random.Next(elevator.Floors.Length)];
+                            Console.WriteLine($"{this} presses the button for floor {nextFloor}");
+                            return nextFloor;
+                        });
+                    }
+                    catch (InsufficientClearanceException)
+                    {
+                        Console.WriteLine($"{this} was not allowed to leave the elevator");
+                        // TODO: await until he gets back to a floor
+                    }
 
                 }
             }
