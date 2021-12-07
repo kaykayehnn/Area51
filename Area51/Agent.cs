@@ -25,9 +25,17 @@ namespace Area51
                 // 40% chance to go to elevator
                 if (nextAction < 6)
                 {
-                    Logger.WriteLine($"{this} is walking around the base...");
-                    // TODO: make this 500 or something bigger
-                    await Task.Delay(1000);
+                    try
+                    {
+                        Logger.WriteLine($"{this} is walking around the base...");
+                        await Task.Delay(1000, elevator.CancellationToken);
+
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        Logger.WriteLine($"{this} could not finish walking around, as the base closed.");
+                        return;
+                    }
                 }
                 else
                 {
@@ -35,11 +43,11 @@ namespace Area51
                     Logger.WriteLine($"{this} calls the elevator.");
                     try
                     {
-                        await elevator.Call(this.currentFloor, this, () =>
+                        var nextFloor = await elevator.Call(this.currentFloor, this, () =>
                         {
                             // Executed on getting in the elevator
                             Logger.WriteLine($"{this} gets in the elevator...");
-                            
+
                             // Choose which floor the agent wants to go to.
                             string nextFloor;
                             do
@@ -51,7 +59,8 @@ namespace Area51
                             return nextFloor;
                         });
 
-                        Logger.WriteLine($"{this} reached their target floor succesfully.");
+                        Logger.WriteLine($"{this} reached floor {nextFloor} succesfully.");
+                        this.currentFloor = nextFloor;
                     }
                     catch (InsufficientClearanceException e)
                     {
@@ -59,6 +68,11 @@ namespace Area51
                         Logger.WriteLine($"{this} waits to get back to the floor they got on the elevator.");
                         await e.GetOffElevator;
                         Logger.WriteLine($"{this} got off the elevator.");
+                    }
+                    catch (ElevatorClosedException)
+                    {
+                        Logger.WriteLine($"{this} was kicked out of the elevator as it closed for the day.");
+                        return;
                     }
                 }
             }

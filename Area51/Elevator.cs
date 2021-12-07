@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,16 +20,17 @@ namespace Area51
         private int currentFloorIndex;
         private ElevatorState state;
         private object @lock;
+        private object stateLock;
 
         // We use a linked list instead of a queue here, because we need to
         // traverse the queue and remove elements from its middle if there are
         // multiple agents calling for the same floor.
         private LinkedList<IElevatorCall> elevatorCallsQueue;
-        // TODO: UPDATE THIS COMMENT This dictionary holds TaskCompletionSources, which we use to notify agents
-        // when the elevator has arrived at their floor and they can get in.
 
-        // We keep the entire calls until we have fully processed them.
+        // We keep the entire call structures until we have fully processed them.
         private List<AgentElevatorCall> agentsBeingProcessed;
+
+        private CancellationTokenSource cancellationTokenSource;
 
         public Elevator()
         {
@@ -42,15 +44,19 @@ namespace Area51
             this.currentFloorIndex = 0;
             this.state = ElevatorState.Closed;
             this.@lock = new object();
+            this.stateLock = new object();
             this.elevatorCallsQueue = new LinkedList<IElevatorCall>();
             this.agentsBeingProcessed = new List<AgentElevatorCall>();
+            this.cancellationTokenSource = new CancellationTokenSource();
         }
 
         public string[] Floors { get; }
 
+        public CancellationToken CancellationToken => this.cancellationTokenSource.Token;
+
         public async void Start()
         {
-            this.state = ElevatorState.Waiting;
+            this.SetState(ElevatorState.Waiting);
 
             while (this.state != ElevatorState.Closed)
             {
@@ -64,29 +70,36 @@ namespace Area51
                     }
                 }
 
-                if (currentCall != null)
+                try
                 {
-                    if (!await this.HandleCall(currentCall))
+                    if (currentCall != null)
                     {
-                        // If the call failed for any reason, retry it and put it first
-                        // in the queue.
-                        lock (this.@lock)
-                        {
-                            this.elevatorCallsQueue.AddFirst(currentCall);
-                        }
+                        await this.HandleCall(currentCall);
                     }
-                }
 
-                await Task.Delay(1);
+                    await Task.Delay(1, this.CancellationToken);
+                }
+                catch (TaskCanceledException) { }
+            }
+
+            // Eject all agents still inside the elevator.
+            var i = 0;
+            while (i < agentsBeingProcessed.Count)
+            {
+                var call = agentsBeingProcessed[i];
+                ExitAgentFromElevator(call.Agent);
+                call.TaskCompletionSource.TrySetException(new ElevatorClosedException());
+                i++;
             }
         }
 
         public void Stop()
         {
-            this.state = ElevatorState.Closed;
+            this.SetState(ElevatorState.Closed);
+            this.cancellationTokenSource.Cancel();
         }
 
-        public Task Call(string floor, Agent agent, Func<string> chooseFloorFunc)
+        public Task<string> Call(string floor, Agent agent, Func<string> chooseFloorFunc)
         {
             var elevatorCall = new AgentElevatorCall(floor, agent, chooseFloorFunc);
             lock (this.@lock)
@@ -96,8 +109,7 @@ namespace Area51
             return elevatorCall.TaskCompletionSource.Task;
         }
 
-        // This method returns true or false depending on if the call was successful or not.
-        private async Task<bool> HandleCall(IElevatorCall call)
+        private async Task HandleCall(IElevatorCall call)
         {
             var nextFloor = call.Floor;
             // First we have to get to the requested floor.
@@ -109,19 +121,27 @@ namespace Area51
             {
                 if (!this.HasSufficientClearance(caller.Agent, nextFloor))
                 {
-                    //Console.WriteLine($"An agent inside the elevator has insufficient clearance to access floor {nextFloor}.");
                     // There is an agent with insufficient clearance for this floor.
                     // We have to immediately go back to drop them off at their initial floor.
 
-                    var getOffElevatorCompletionSource = new TaskCompletionSource();
-
+                    var getOffElevatorCompletionSource = new TaskCompletionSource<string>();
                     var exception = new InsufficientClearanceException(getOffElevatorCompletionSource.Task);
                     caller.TaskCompletionSource.SetException(exception);
 
+                    // Even though we're modifying the collection in the loop, we can get away
+                    // with it because we return before any more iterations can occur.
+                    caller.TaskCompletionSource = getOffElevatorCompletionSource;
                     await this.GoTo(caller.InitialFloor);
-                    ExitAgentFromElevator(caller.Agent, getOffElevatorCompletionSource);
+                    ExitAgentFromElevator(caller.Agent);
+                    getOffElevatorCompletionSource.SetResult(this.Floors[this.currentFloorIndex]);
 
-                    return false;
+                    var retryFloor = new ButtonPress(caller.DestinationFloor);
+                    lock (this.@lock)
+                    {
+                        this.elevatorCallsQueue.AddFirst(retryFloor);
+                    }
+
+                    return;
                 }
             }
 
@@ -133,7 +153,8 @@ namespace Area51
                 var caller = agentsBeingProcessed[i];
                 if (nextFloor == caller.DestinationFloor)
                 {
-                    ExitAgentFromElevator(caller.Agent, caller.TaskCompletionSource);
+                    ExitAgentFromElevator(caller.Agent);
+                    caller.TaskCompletionSource.SetResult(nextFloor);
                 }
                 else
                 {
@@ -186,47 +207,42 @@ namespace Area51
 
                 Logger.WriteLine("Elevator doors are closing...");
             }
-
-            return true;
         }
 
-        public async void DisplayState()
+        public void DisplayState()
         {
-            Console.CursorVisible = false;
             var DefaultWhiteSpaceOverwriter = new string(' ', 10);
-
-            while (this.state != ElevatorState.Closed)
+            string nextStops;
+            lock (this.@lock)
             {
-                string nextStops;
-                lock (this.@lock)
+                if (this.elevatorCallsQueue.Count > 0)
                 {
-                    if (this.elevatorCallsQueue.Count > 0)
-                    {
-                        var next5Stops = this.elevatorCallsQueue
-                            .Take(5)
-                            .Select(ec => ec.Floor);
+                    var next5Stops = this.elevatorCallsQueue
+                        .Take(5)
+                        .Select(ec => ec.Floor);
 
-                        nextStops = string.Join(", ", next5Stops);
-                    }
-                    else
-                    {
-                        nextStops = "None";
-                    }
+                    nextStops = string.Join(", ", next5Stops);
                 }
-
-                int logLinesToShow = 20;
-                var allLines = Logger.GetLines();
-                var lastLogLines = new StringBuilder();
-                int firstLineIndex = Math.Max(0, allLines.Count - logLinesToShow);
-                for (int i = firstLineIndex; i < allLines.Count; i++)
+                else
                 {
-                    var line = allLines[i];
-                    var whiteSpaceOverwriter = new string(' ', Console.WindowWidth - line.Length - 4);
-                    lastLogLines.AppendLine($"{i + 1,2}: {allLines[i]}{whiteSpaceOverwriter}");
+                    nextStops = "None";
                 }
+            }
 
-                Console.SetCursorPosition(0, 0);
-                Console.WriteLine($@"
+            int logLinesToShow = 20;
+            var allLines = Logger.GetLines();
+            var lastLogLines = new StringBuilder();
+            int firstLineIndex = Math.Max(0, allLines.Count - logLinesToShow);
+            int padChars = 1 + (int)Math.Log10(allLines.Count);
+            for (int i = firstLineIndex; i < allLines.Count; i++)
+            {
+                var line = allLines[i];
+                var whiteSpaceOverwriter = new string(' ', Console.WindowWidth - (line.Length + padChars + 2));
+                lastLogLines.AppendLine($"{(i + 1).ToString().PadLeft(padChars)}: {allLines[i]}{whiteSpaceOverwriter}");
+            }
+
+            Console.SetCursorPosition(0, 0);
+            Console.WriteLine($@"
 Elevator floor: {this.Floors[this.currentFloorIndex]}{DefaultWhiteSpaceOverwriter}
 Elevator state: {this.state}{DefaultWhiteSpaceOverwriter}
 Agents inside elevator: {this.agentsBeingProcessed.Count}{DefaultWhiteSpaceOverwriter}
@@ -234,31 +250,43 @@ Next stops: {nextStops}{DefaultWhiteSpaceOverwriter}
 
 Log ({firstLineIndex} / {allLines.Count}):{DefaultWhiteSpaceOverwriter}
 {lastLogLines}"
-    .TrimStart());
+.TrimStart());
+        }
 
-                await Task.Delay(16);
+        public async void DisplayStateLoop()
+        {
+            // Console.CursorVisible.get is only accessible on windows.
+            bool previousCursorVisible = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                ? Console.CursorVisible
+                : true;
+            Console.CursorVisible = false;
+
+            try
+            {
+                while (this.state != ElevatorState.Closed)
+                {
+                    this.DisplayState();
+
+                    await Task.Delay(16, this.cancellationTokenSource.Token);
+                }
             }
+            catch (TaskCanceledException) { }
 
-            Console.Clear();
+            Console.CursorVisible = previousCursorVisible;
         }
 
         private string EnterAgentIntoElevator(AgentElevatorCall call)
         {
             this.agentsBeingProcessed.Add(call);
 
-            // Notify agent that they can get on the elevator
-            // TODO: we should probably set this task when agent gets off of elevator?
-            //call.TaskCompletionSource.SetResult();
-
             var chosenFloor = call.DestinationFloor;
             return chosenFloor;
         }
 
-        private void ExitAgentFromElevator(Agent agent, TaskCompletionSource completionSource)
+        private void ExitAgentFromElevator(Agent agent)
         {
             var index = this.agentsBeingProcessed.FindIndex(aec => aec.Agent == agent);
             this.agentsBeingProcessed.RemoveAt(index);
-            completionSource.SetResult();
         }
 
         private bool HasSufficientClearance(Agent agent, string floor)
@@ -285,20 +313,39 @@ Log ({firstLineIndex} / {allLines.Count}):{DefaultWhiteSpaceOverwriter}
             int distance = Math.Abs(currentFloorIndex - nextFloorIndex);
 
             Logger.WriteLine($"The elevator is travelling to floor {floor}...");
-            this.state = ElevatorState.Moving;
-            return Task.Delay(distance * MS_PER_FLOOR)
+            this.SetState(ElevatorState.Moving, ElevatorState.Waiting);
+            return Task.Delay(distance * MS_PER_FLOOR, this.CancellationToken)
                 .ContinueWith((_) =>
                 {
                     currentFloorIndex = nextFloorIndex;
-                    this.state = ElevatorState.Waiting;
-                });
+                    this.SetState(ElevatorState.Waiting, ElevatorState.Moving);
+                }, this.CancellationToken);
         }
-    }
 
-    enum ElevatorState
-    {
-        Waiting,
-        Moving,
-        Closed
+        private void SetState(ElevatorState toState)
+        {
+            lock (this.stateLock)
+            {
+                this.state = toState;
+            }
+        }
+
+        private void SetState(ElevatorState toState, ElevatorState fromState)
+        {
+            lock (this.stateLock)
+            {
+                if (this.state == fromState)
+                {
+                    this.state = toState;
+                }
+            }
+        }
+
+        enum ElevatorState
+        {
+            Waiting,
+            Moving,
+            Closed
+        }
     }
 }

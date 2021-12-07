@@ -12,7 +12,7 @@ namespace Area51.ElevatorCalls
             this.InitialFloor = floor;
             this.Agent = agent;
             this.chooseFloorFunc = chooseFloorFunc;
-            this.TaskCompletionSource = new TaskCompletionSource();
+            this.TaskCompletionSource = new TaskCompletionSource<string>();
         }
 
         public string InitialFloor { get; }
@@ -33,6 +33,6 @@ namespace Area51.ElevatorCalls
                 return this.destinationFloor;
             }
         }
-        public TaskCompletionSource TaskCompletionSource { get; }
+        public TaskCompletionSource<string> TaskCompletionSource { get; set; }
     }
 }
