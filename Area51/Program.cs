@@ -20,12 +20,14 @@ namespace Area51
 
             tasks.Add(Task.Run(elevator.Start));
 
+            tasks.Add(Task.Run(elevator.DisplayState));
+
             tasks.Add(Task.Run(agent1.RoamAroundTheBase));
             tasks.Add(Task.Run(agent2.RoamAroundTheBase));
             tasks.Add(Task.Run(agent3.RoamAroundTheBase));
 
-            // Shut down elevator after 30 seconds
-            tasks.Add(Task.Delay(30_000).ContinueWith((t) => elevator.Stop()));
+            // Shut down elevator after 60 seconds
+            tasks.Add(Task.Delay(60_000).ContinueWith((t) => elevator.Stop()));
 
             Task.WhenAll(tasks).Wait();
         }

@@ -22,22 +22,23 @@ namespace Area51
             while (true)
             {
                 int nextAction = random.Next(10);
+                // 40% chance to go to elevator
                 if (nextAction < 6)
                 {
-                    Console.WriteLine($"{this} is walking around the base...");
+                    Logger.WriteLine($"{this} is walking around the base...");
                     // TODO: make this 500 or something bigger
-                    await Task.Delay(5);
+                    await Task.Delay(5000);
                 }
                 else
                 {
                     // Get in elevator
-                    Console.WriteLine($"{this} calls the elevator.");
+                    Logger.WriteLine($"{this} calls the elevator.");
                     try
                     {
                         await elevator.Call(this.currentFloor, this, () =>
                         {
                             // Executed on getting in the elevator
-                            Console.WriteLine($"{this} gets in the elevator...");
+                            Logger.WriteLine($"{this} gets in the elevator...");
                             
                             // Choose which floor the agent wants to go to.
                             string nextFloor;
@@ -46,18 +47,18 @@ namespace Area51
                                 nextFloor = elevator.Floors[random.Next(elevator.Floors.Length)];
                             } while (nextFloor == this.currentFloor);
 
-                            Console.WriteLine($"{this} presses the button for floor {nextFloor}.");
+                            Logger.WriteLine($"{this} presses the button for floor {nextFloor}.");
                             return nextFloor;
                         });
 
-                        Console.WriteLine($"{this} reached their target floor succesfully.");
+                        Logger.WriteLine($"{this} reached their target floor succesfully.");
                     }
                     catch (InsufficientClearanceException e)
                     {
-                        Console.WriteLine($"{this} was not allowed to leave the elevator due to insufficient clearance.");
-                        Console.WriteLine($"{this} waits to get back to the floor they got on the elevator.");
+                        Logger.WriteLine($"{this} was not allowed to leave the elevator due to insufficient clearance.");
+                        Logger.WriteLine($"{this} waits to get back to the floor they got on the elevator.");
                         await e.GetOffElevator;
-                        Console.WriteLine($"{this} got off the elevator.");
+                        Logger.WriteLine($"{this} got off the elevator.");
                     }
                 }
             }

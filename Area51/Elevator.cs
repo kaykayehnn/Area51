@@ -1,6 +1,9 @@
 ﻿using Area51.ElevatorCalls;
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Area51
@@ -16,11 +19,6 @@ namespace Area51
         private int currentFloorIndex;
         private ElevatorState state;
         private object @lock;
-
-        internal void DisplayState()
-        {
-            throw new NotImplementedException();
-        }
 
         // We use a linked list instead of a queue here, because we need to
         // traverse the queue and remove elements from its middle if there are
@@ -145,7 +143,7 @@ namespace Area51
 
             if (call is AgentElevatorCall agentCall)
             {
-                Console.WriteLine($"The elevator arrived at floor {nextFloor}");
+                Logger.WriteLine($"The elevator arrived at floor {nextFloor}");
                 var pressedButtons = new HashSet<string>();
                 var pressedButton = this.EnterAgentIntoElevator(agentCall);
                 pressedButtons.Add(pressedButton);
@@ -186,10 +184,62 @@ namespace Area51
                     }
                 }
 
-                Console.WriteLine("Elevator doors are closing...");
+                Logger.WriteLine("Elevator doors are closing...");
             }
 
             return true;
+        }
+
+        public async void DisplayState()
+        {
+            Console.CursorVisible = false;
+            var DefaultWhiteSpaceOverwriter = new string(' ', 10);
+
+            while (this.state != ElevatorState.Closed)
+            {
+                string nextStops;
+                lock (this.@lock)
+                {
+                    if (this.elevatorCallsQueue.Count > 0)
+                    {
+                        var next5Stops = this.elevatorCallsQueue
+                            .Take(5)
+                            .Select(ec => ec.Floor);
+
+                        nextStops = string.Join(", ", next5Stops);
+                    }
+                    else
+                    {
+                        nextStops = "None";
+                    }
+                }
+
+                int logLinesToShow = 20;
+                var lastLogLines = new StringBuilder();
+                int lastLineIndex = Math.Max(0, Logger.lines.Count - logLinesToShow);
+                //int shownLines = Logger.lines.Count - lastLineIndex;
+                for (int i = lastLineIndex; i < Logger.lines.Count; i++)
+                {
+                    var line = Logger.lines[i];
+                    var whiteSpaceOverwriter = new string(' ', Console.WindowWidth - line.Length - 4);
+                    lastLogLines.AppendLine($"{i + 1,2}: {Logger.lines[i]}{whiteSpaceOverwriter}");
+                }
+
+                Console.SetCursorPosition(0, 0);
+                Console.WriteLine($@"
+Elevator floor: {this.Floors[this.currentFloorIndex]}{DefaultWhiteSpaceOverwriter}
+Elevator state: {this.state}{DefaultWhiteSpaceOverwriter}
+Agents inside elevator: {this.agentsBeingProcessed.Count}{DefaultWhiteSpaceOverwriter}
+Next stops: {nextStops}{DefaultWhiteSpaceOverwriter}
+
+Log ({lastLineIndex} / {Logger.lines.Count}):{DefaultWhiteSpaceOverwriter}
+{lastLogLines}"
+    .TrimStart());
+
+                await Task.Delay(16);
+            }
+
+            Console.Clear();
         }
 
         private string EnterAgentIntoElevator(AgentElevatorCall call)
@@ -234,11 +284,13 @@ namespace Area51
             int nextFloorIndex = Array.IndexOf(this.Floors, floor);
             int distance = Math.Abs(currentFloorIndex - nextFloorIndex);
 
-            Console.WriteLine($"The elevator is travelling to floor {floor}...");
+            Logger.WriteLine($"The elevator is travelling to floor {floor}...");
+            this.state = ElevatorState.Moving;
             return Task.Delay(distance * MS_PER_FLOOR)
                 .ContinueWith((_) =>
                 {
                     currentFloorIndex = nextFloorIndex;
+                    this.state = ElevatorState.Waiting;
                 });
         }
     }
