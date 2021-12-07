@@ -19,7 +19,7 @@ namespace Area51
         private const int MS_PER_FLOOR = 1000;
         private int currentFloorIndex;
         private ElevatorState state;
-        private object @lock;
+        private object queueLock;
         private object stateLock;
 
         // We use a linked list instead of a queue here, because we need to
@@ -43,7 +43,7 @@ namespace Area51
             };
             this.currentFloorIndex = 0;
             this.state = ElevatorState.Closed;
-            this.@lock = new object();
+            this.queueLock = new object();
             this.stateLock = new object();
             this.elevatorCallsQueue = new LinkedList<IElevatorCall>();
             this.agentsBeingProcessed = new List<AgentElevatorCall>();
@@ -61,7 +61,7 @@ namespace Area51
             while (this.state != ElevatorState.Closed)
             {
                 IElevatorCall currentCall = null;
-                lock (this.@lock)
+                lock (this.queueLock)
                 {
                     if (this.elevatorCallsQueue.Count > 0)
                     {
@@ -102,7 +102,7 @@ namespace Area51
         public Task<string> Call(string floor, Agent agent, Func<string> chooseFloorFunc)
         {
             var elevatorCall = new AgentElevatorCall(floor, agent, chooseFloorFunc);
-            lock (this.@lock)
+            lock (this.queueLock)
             {
                 this.elevatorCallsQueue.AddLast(elevatorCall);
             }
@@ -136,7 +136,7 @@ namespace Area51
                     getOffElevatorCompletionSource.SetResult(this.Floors[this.currentFloorIndex]);
 
                     var retryFloor = new ButtonPress(caller.DestinationFloor);
-                    lock (this.@lock)
+                    lock (this.queueLock)
                     {
                         this.elevatorCallsQueue.AddFirst(retryFloor);
                     }
@@ -170,7 +170,7 @@ namespace Area51
                 pressedButtons.Add(pressedButton);
 
                 // Now we need to find if there are other callers waiting on the same floor.
-                lock (this.@lock)
+                lock (this.queueLock)
                 {
                     var currentNode = elevatorCallsQueue.First;
                     while (currentNode != null)
@@ -199,7 +199,7 @@ namespace Area51
                 foreach (var button in pressedButtons)
                 {
                     var newCall = new ButtonPress(button);
-                    lock (this.@lock)
+                    lock (this.queueLock)
                     {
                         this.elevatorCallsQueue.AddFirst(newCall);
                     }
@@ -213,7 +213,7 @@ namespace Area51
         {
             var DefaultWhiteSpaceOverwriter = new string(' ', 10);
             string nextStops;
-            lock (this.@lock)
+            lock (this.queueLock)
             {
                 if (this.elevatorCallsQueue.Count > 0)
                 {
