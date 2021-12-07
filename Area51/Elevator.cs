@@ -90,7 +90,6 @@ namespace Area51
                 ExitAgentFromElevator(call.Agent);
                 // TrySet in case an agent call has errored once and it has already been handled.
                 call.TaskCompletionSource.TrySetException(new ElevatorClosedException());
-                i++;
             }
         }
 
@@ -149,6 +148,7 @@ namespace Area51
                 }
             }
 
+            Logger.WriteLine($"The elevator arrived at floor {nextFloor}.");
             // If we reached this point, then all agents have sufficient security clearances.
             // We can check if any of them want to get off here.
             var i = 0;
@@ -168,7 +168,6 @@ namespace Area51
 
             if (call is AgentElevatorCall agentCall)
             {
-                Logger.WriteLine($"The elevator arrived at floor {nextFloor}");
                 var pressedButtons = new HashSet<string>();
                 var pressedButton = this.EnterAgentIntoElevator(agentCall);
                 pressedButtons.Add(pressedButton);
