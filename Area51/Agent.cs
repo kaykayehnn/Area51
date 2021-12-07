@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading.Tasks;
 
 namespace Area51
 {
@@ -24,28 +25,33 @@ namespace Area51
                 if (nextAction < 6)
                 {
                     Console.WriteLine($"{this} is walking around the base...");
+                    // TODO: make this 500 or something bigger
+                    await Task.Delay(5);
                 }
                 else
                 {
                     // Get in elevator
-                    Console.WriteLine($"{this} calls the elevator");
+                    Console.WriteLine($"{this} calls the elevator.");
                     try
                     {
                         await elevator.Call(this.currentFloor, this, () =>
                         {
-                            // Execute on getting in the elevator
+                            // Executed on getting in the elevator
                             Console.WriteLine($"{this} gets in the elevator...");
                             var nextFloor = elevator.Floors[random.Next(elevator.Floors.Length)];
-                            Console.WriteLine($"{this} presses the button for floor {nextFloor}");
+                            Console.WriteLine($"{this} presses the button for floor {nextFloor}.");
                             return nextFloor;
                         });
-                    }
-                    catch (InsufficientClearanceException)
-                    {
-                        Console.WriteLine($"{this} was not allowed to leave the elevator");
-                        // TODO: await until he gets back to a floor
-                    }
 
+                        Console.WriteLine($"{this} reached their target floor succesfully.");
+                    }
+                    catch (InsufficientClearanceException e)
+                    {
+                        Console.WriteLine($"{this} was not allowed to leave the elevator due to insufficient clearance.");
+                        Console.WriteLine($"{this} waits to get back to the floor they got on the elevator.");
+                        await e.GetOffElevator;
+                        Console.WriteLine($"{this} got off the elevator.");
+                    }
                 }
             }
         }
