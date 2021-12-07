@@ -16,6 +16,12 @@ namespace Area51
         private int currentFloorIndex;
         private ElevatorState state;
         private object @lock;
+
+        internal void DisplayState()
+        {
+            throw new NotImplementedException();
+        }
+
         // We use a linked list instead of a queue here, because we need to
         // traverse the queue and remove elements from its middle if there are
         // multiple agents calling for the same floor.
@@ -56,16 +62,20 @@ namespace Area51
                     if (this.elevatorCallsQueue.Count > 0)
                     {
                         currentCall = this.elevatorCallsQueue.First.Value;
+                        this.elevatorCallsQueue.RemoveFirst();
                     }
                 }
 
-                // If and only if the elevator call succeeded, then remove the entry from the queue.
-                bool callSucceeded = currentCall != null && await this.HandleCall(currentCall);
-                if (callSucceeded)
+                if (currentCall != null)
                 {
-                    lock (this.@lock)
+                    if (!await this.HandleCall(currentCall))
                     {
-                        this.elevatorCallsQueue.RemoveFirst();
+                        // If the call failed for any reason, retry it and put it first
+                        // in the queue.
+                        lock (this.@lock)
+                        {
+                            this.elevatorCallsQueue.AddFirst(currentCall);
+                        }
                     }
                 }
 
@@ -190,8 +200,7 @@ namespace Area51
             // TODO: we should probably set this task when agent gets off of elevator?
             //call.TaskCompletionSource.SetResult();
 
-            var chosenFloor = call.ChooseFloorFunc();
-            call.DestinationFloor = chosenFloor;
+            var chosenFloor = call.DestinationFloor;
             return chosenFloor;
         }
 
@@ -229,7 +238,7 @@ namespace Area51
             return Task.Delay(distance * MS_PER_FLOOR)
                 .ContinueWith((_) =>
                 {
-                    currentFloorIndex =nextFloorIndex;
+                    currentFloorIndex = nextFloorIndex;
                 });
         }
     }

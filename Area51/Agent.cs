@@ -38,7 +38,14 @@ namespace Area51
                         {
                             // Executed on getting in the elevator
                             Console.WriteLine($"{this} gets in the elevator...");
-                            var nextFloor = elevator.Floors[random.Next(elevator.Floors.Length)];
+                            
+                            // Choose which floor the agent wants to go to.
+                            string nextFloor;
+                            do
+                            {
+                                nextFloor = elevator.Floors[random.Next(elevator.Floors.Length)];
+                            } while (nextFloor == this.currentFloor);
+
                             Console.WriteLine($"{this} presses the button for floor {nextFloor}.");
                             return nextFloor;
                         });
