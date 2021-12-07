@@ -88,6 +88,7 @@ namespace Area51
             {
                 var call = agentsBeingProcessed[i];
                 ExitAgentFromElevator(call.Agent);
+                // TrySet in case an agent call has errored once and it has already been handled.
                 call.TaskCompletionSource.TrySetException(new ElevatorClosedException());
                 i++;
             }
@@ -130,6 +131,9 @@ namespace Area51
 
                     // Even though we're modifying the collection in the loop, we can get away
                     // with it because we return before any more iterations can occur.
+
+                    // Set the caller's new completion source, in case the elevator gets closed
+                    // amid returning the agent to their initial floor.
                     caller.TaskCompletionSource = getOffElevatorCompletionSource;
                     await this.GoTo(caller.InitialFloor);
                     ExitAgentFromElevator(caller.Agent);
