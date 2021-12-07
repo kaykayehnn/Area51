@@ -27,7 +27,7 @@ namespace Area51
                 {
                     Logger.WriteLine($"{this} is walking around the base...");
                     // TODO: make this 500 or something bigger
-                    await Task.Delay(5000);
+                    await Task.Delay(1000);
                 }
                 else
                 {

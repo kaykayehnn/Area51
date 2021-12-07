@@ -215,14 +215,14 @@ namespace Area51
                 }
 
                 int logLinesToShow = 20;
+                var allLines = Logger.GetLines();
                 var lastLogLines = new StringBuilder();
-                int lastLineIndex = Math.Max(0, Logger.lines.Count - logLinesToShow);
-                //int shownLines = Logger.lines.Count - lastLineIndex;
-                for (int i = lastLineIndex; i < Logger.lines.Count; i++)
+                int firstLineIndex = Math.Max(0, allLines.Count - logLinesToShow);
+                for (int i = firstLineIndex; i < allLines.Count; i++)
                 {
-                    var line = Logger.lines[i];
+                    var line = allLines[i];
                     var whiteSpaceOverwriter = new string(' ', Console.WindowWidth - line.Length - 4);
-                    lastLogLines.AppendLine($"{i + 1,2}: {Logger.lines[i]}{whiteSpaceOverwriter}");
+                    lastLogLines.AppendLine($"{i + 1,2}: {allLines[i]}{whiteSpaceOverwriter}");
                 }
 
                 Console.SetCursorPosition(0, 0);
@@ -232,7 +232,7 @@ Elevator state: {this.state}{DefaultWhiteSpaceOverwriter}
 Agents inside elevator: {this.agentsBeingProcessed.Count}{DefaultWhiteSpaceOverwriter}
 Next stops: {nextStops}{DefaultWhiteSpaceOverwriter}
 
-Log ({lastLineIndex} / {Logger.lines.Count}):{DefaultWhiteSpaceOverwriter}
+Log ({firstLineIndex} / {allLines.Count}):{DefaultWhiteSpaceOverwriter}
 {lastLogLines}"
     .TrimStart());
 
