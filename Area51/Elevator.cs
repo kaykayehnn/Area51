@@ -91,6 +91,12 @@ namespace Area51
                 // TrySet in case an agent call has errored once and it has already been handled.
                 call.TaskCompletionSource.TrySetException(new ElevatorClosedException());
             }
+
+            // Remove all unfinished calls from the queue.
+            lock (this.queueLock)
+            {
+                this.elevatorCallsQueue.Clear();
+            }
         }
 
         public void Stop()
@@ -111,7 +117,7 @@ namespace Area51
 
         public void DisplayState()
         {
-            var DefaultWhiteSpaceOverwriter = new string(' ', 10);
+            var DefaultWhiteSpaceOverwriter = new string(' ', 30);
             string nextStops;
             lock (this.queueLock)
             {
@@ -284,7 +290,6 @@ Log ({firstLineIndex} / {allLines.Count}):{DefaultWhiteSpaceOverwriter}
             Logger.WriteLine("Elevator doors are closing...");
         }
 
-
         private string EnterAgentIntoElevator(AgentElevatorCall call)
         {
             this.agentsBeingProcessed.Add(call);
@@ -322,12 +327,27 @@ Log ({firstLineIndex} / {allLines.Count}):{DefaultWhiteSpaceOverwriter}
             int nextFloorIndex = Array.IndexOf(this.Floors, floor);
             int distance = Math.Abs(currentFloorIndex - nextFloorIndex);
 
+            if (distance == 0)
+            {
+                // We're already at the requested floor.
+                return;
+            }
+
             Logger.WriteLine($"The elevator is travelling to floor {floor}...");
             this.SetState(ElevatorState.Moving, ElevatorState.Waiting);
+            for (int i = 0; i < distance; i++)
+            {
+                await Task.Delay(MS_PER_FLOOR, this.CancellationToken);
+                if (currentFloorIndex < nextFloorIndex)
+                {
+                    currentFloorIndex++;
+                }
+                else
+                {
+                    currentFloorIndex--;
+                }
+            }
 
-            await Task.Delay(distance * MS_PER_FLOOR, this.CancellationToken);
-
-            currentFloorIndex = nextFloorIndex;
             this.SetState(ElevatorState.Waiting, ElevatorState.Moving);
         }
 
