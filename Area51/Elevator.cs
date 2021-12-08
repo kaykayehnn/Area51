@@ -238,51 +238,52 @@ Log ({firstLineIndex} / {allLines.Count}):{DefaultWhiteSpaceOverwriter}
                 }
             }
 
+            var pressedButtons = new HashSet<string>();
+            string pressedButton;
             if (call is AgentElevatorCall agentCall)
             {
-                var pressedButtons = new HashSet<string>();
-                var pressedButton = this.EnterAgentIntoElevator(agentCall);
+                pressedButton = this.EnterAgentIntoElevator(agentCall);
                 pressedButtons.Add(pressedButton);
+            }
 
-                // Now we need to find if there are other callers waiting on the same floor.
+            // Now we need to find if there are other callers waiting on floor we are currently at.
+            lock (this.queueLock)
+            {
+                var currentNode = elevatorCallsQueue.First;
+                while (currentNode != null)
+                {
+                    if (currentNode.Value is AgentElevatorCall caller && currentNode.Value.Floor == nextFloor)
+                    {
+                        // We have found a matching call. Remove the caller from the queue
+                        // and put them in the elevator.
+                        pressedButton = this.EnterAgentIntoElevator(caller);
+                        pressedButtons.Add(pressedButton);
+
+                        var next = currentNode.Next;
+                        // Remove the caller from the task queue, as we have already serviced them.
+                        elevatorCallsQueue.Remove(currentNode);
+                        currentNode = next;
+                    }
+                    else
+                    {
+                        currentNode = currentNode.Next;
+                    }
+                }
+            }
+
+            // We have handled all agents on the current floor, and we now have to press their buttons.
+            foreach (var button in pressedButtons)
+            {
+                var newCall = new ButtonPress(button);
                 lock (this.queueLock)
                 {
-                    var currentNode = elevatorCallsQueue.First;
-                    while (currentNode != null)
-                    {
-                        if (currentNode.Value is AgentElevatorCall && currentNode.Value.Floor == nextFloor)
-                        {
-                            // We have found a matching call. Remove the caller from the queue
-                            // and put them in the elevator.
-                            var caller = (AgentElevatorCall)currentNode.Value;
-                            pressedButton = this.EnterAgentIntoElevator(caller);
-                            pressedButtons.Add(pressedButton);
-
-                            var next = currentNode.Next;
-                            // Remove the caller from the task queue, as we have already serviced them.
-                            elevatorCallsQueue.Remove(currentNode);
-                            currentNode = next;
-                        }
-                        else
-                        {
-                            currentNode = currentNode.Next;
-                        }
-                    }
+                    this.elevatorCallsQueue.AddLast(newCall);
                 }
-
-                // We have handled all agents on the current floor, and we now have to press their buttons.
-                foreach (var button in pressedButtons)
-                {
-                    var newCall = new ButtonPress(button);
-                    lock (this.queueLock)
-                    {
-                        this.elevatorCallsQueue.AddFirst(newCall);
-                    }
-                }
-
-                Logger.WriteLine("Elevator doors are closing...");
             }
+
+            Logger.WriteLine("Elevator doors are closing...");
         }
+
 
         private string EnterAgentIntoElevator(AgentElevatorCall call)
         {
