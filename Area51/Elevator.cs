@@ -109,6 +109,78 @@ namespace Area51
             return elevatorCall.TaskCompletionSource.Task;
         }
 
+        public void DisplayState()
+        {
+            var DefaultWhiteSpaceOverwriter = new string(' ', 10);
+            string nextStops;
+            lock (this.queueLock)
+            {
+                if (this.elevatorCallsQueue.Count > 0)
+                {
+                    var next5Stops = this.elevatorCallsQueue
+                        .Take(5)
+                        .Select(ec => ec.Floor);
+
+                    nextStops = string.Join(" - ", next5Stops);
+                }
+                else
+                {
+                    nextStops = "None";
+                }
+            }
+
+            int logLinesToShow = 20;
+            var allLines = Logger.GetLines();
+            var lastLogLines = new StringBuilder();
+            int firstLineIndex = Math.Max(0, allLines.Count - logLinesToShow);
+            int padChars = 1 + (int)Math.Log10(allLines.Count);
+            for (int i = firstLineIndex; i < allLines.Count; i++)
+            {
+                var line = allLines[i];
+                var whiteSpaceOverwriter = new string(' ', Console.WindowWidth - (line.Length + padChars + 2));
+                lastLogLines.AppendLine($"{(i + 1).ToString().PadLeft(padChars)}: {allLines[i]}{whiteSpaceOverwriter}");
+            }
+
+
+            var currentFloor = this.Floors[this.currentFloorIndex];
+            var currentFloorDisplay = string.Join(" ", this.Floors.Select(f => $" {f} "))
+                .Replace($" {currentFloor} ", $"[{currentFloor}]");
+
+            Console.SetCursorPosition(0, 0);
+            Console.WriteLine($@"
+Elevator floor: {currentFloorDisplay}{DefaultWhiteSpaceOverwriter}
+Elevator state: {this.state}{DefaultWhiteSpaceOverwriter}
+Agents inside elevator: {this.agentsBeingProcessed.Count}{DefaultWhiteSpaceOverwriter}
+Next stops: {nextStops}{DefaultWhiteSpaceOverwriter}
+
+Log ({firstLineIndex} / {allLines.Count}):{DefaultWhiteSpaceOverwriter}
+{lastLogLines}"
+.TrimStart());
+        }
+
+        public async void DisplayStateLoop()
+        {
+            // Console.CursorVisible.get is only accessible on windows.
+            bool previousCursorVisible = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                ? Console.CursorVisible
+                : true;
+            Console.CursorVisible = false;
+
+            Console.Clear();
+            try
+            {
+                while (this.state != ElevatorState.Closed)
+                {
+                    this.DisplayState();
+
+                    await Task.Delay(16, this.cancellationTokenSource.Token);
+                }
+            }
+            catch (TaskCanceledException) { }
+
+            Console.CursorVisible = previousCursorVisible;
+        }
+
         private async Task HandleCall(IElevatorCall call)
         {
             var nextFloor = call.Floor;
@@ -212,78 +284,6 @@ namespace Area51
             }
         }
 
-        public void DisplayState()
-        {
-            var DefaultWhiteSpaceOverwriter = new string(' ', 10);
-            string nextStops;
-            lock (this.queueLock)
-            {
-                if (this.elevatorCallsQueue.Count > 0)
-                {
-                    var next5Stops = this.elevatorCallsQueue
-                        .Take(5)
-                        .Select(ec => ec.Floor);
-
-                    nextStops = string.Join(" - ", next5Stops);
-                }
-                else
-                {
-                    nextStops = "None";
-                }
-            }
-
-            int logLinesToShow = 20;
-            var allLines = Logger.GetLines();
-            var lastLogLines = new StringBuilder();
-            int firstLineIndex = Math.Max(0, allLines.Count - logLinesToShow);
-            int padChars = 1 + (int)Math.Log10(allLines.Count);
-            for (int i = firstLineIndex; i < allLines.Count; i++)
-            {
-                var line = allLines[i];
-                var whiteSpaceOverwriter = new string(' ', Console.WindowWidth - (line.Length + padChars + 2));
-                lastLogLines.AppendLine($"{(i + 1).ToString().PadLeft(padChars)}: {allLines[i]}{whiteSpaceOverwriter}");
-            }
-
-
-            var currentFloor = this.Floors[this.currentFloorIndex];
-            var currentFloorDisplay = string.Join(" ", this.Floors.Select(f => $" {f} "))
-                .Replace($" {currentFloor} ", $"[{currentFloor}]");
-
-            Console.SetCursorPosition(0, 0);
-            Console.WriteLine($@"
-Elevator floor: {currentFloorDisplay}{DefaultWhiteSpaceOverwriter}
-Elevator state: {this.state}{DefaultWhiteSpaceOverwriter}
-Agents inside elevator: {this.agentsBeingProcessed.Count}{DefaultWhiteSpaceOverwriter}
-Next stops: {nextStops}{DefaultWhiteSpaceOverwriter}
-
-Log ({firstLineIndex} / {allLines.Count}):{DefaultWhiteSpaceOverwriter}
-{lastLogLines}"
-.TrimStart());
-        }
-
-        public async void DisplayStateLoop()
-        {
-            // Console.CursorVisible.get is only accessible on windows.
-            bool previousCursorVisible = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-                ? Console.CursorVisible
-                : true;
-            Console.CursorVisible = false;
-
-            Console.Clear();
-            try
-            {
-                while (this.state != ElevatorState.Closed)
-                {
-                    this.DisplayState();
-
-                    await Task.Delay(16, this.cancellationTokenSource.Token);
-                }
-            }
-            catch (TaskCanceledException) { }
-
-            Console.CursorVisible = previousCursorVisible;
-        }
-
         private string EnterAgentIntoElevator(AgentElevatorCall call)
         {
             this.agentsBeingProcessed.Add(call);
@@ -314,7 +314,7 @@ Log ({firstLineIndex} / {allLines.Count}):{DefaultWhiteSpaceOverwriter}
             }
         }
 
-        private Task GoTo(string floor)
+        private async Task GoTo(string floor)
         {
             // We have to get from the current floor to the requested floor.
             // To do that, first we have to find the distance between the floors.
@@ -323,12 +323,11 @@ Log ({firstLineIndex} / {allLines.Count}):{DefaultWhiteSpaceOverwriter}
 
             Logger.WriteLine($"The elevator is travelling to floor {floor}...");
             this.SetState(ElevatorState.Moving, ElevatorState.Waiting);
-            return Task.Delay(distance * MS_PER_FLOOR, this.CancellationToken)
-                .ContinueWith((_) =>
-                {
-                    currentFloorIndex = nextFloorIndex;
-                    this.SetState(ElevatorState.Waiting, ElevatorState.Moving);
-                }, this.CancellationToken);
+
+            await Task.Delay(distance * MS_PER_FLOOR, this.CancellationToken);
+
+            currentFloorIndex = nextFloorIndex;
+            this.SetState(ElevatorState.Waiting, ElevatorState.Moving);
         }
 
         private void SetState(ElevatorState toState)
