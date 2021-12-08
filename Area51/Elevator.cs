@@ -224,7 +224,7 @@ namespace Area51
                         .Take(5)
                         .Select(ec => ec.Floor);
 
-                    nextStops = string.Join(", ", next5Stops);
+                    nextStops = string.Join(" - ", next5Stops);
                 }
                 else
                 {
@@ -244,9 +244,14 @@ namespace Area51
                 lastLogLines.AppendLine($"{(i + 1).ToString().PadLeft(padChars)}: {allLines[i]}{whiteSpaceOverwriter}");
             }
 
+
+            var currentFloor = this.Floors[this.currentFloorIndex];
+            var currentFloorDisplay = string.Join(" ", this.Floors.Select(f => $" {f} "))
+                .Replace($" {currentFloor} ", $"[{currentFloor}]");
+
             Console.SetCursorPosition(0, 0);
             Console.WriteLine($@"
-Elevator floor: {this.Floors[this.currentFloorIndex]}{DefaultWhiteSpaceOverwriter}
+Elevator floor: {currentFloorDisplay}{DefaultWhiteSpaceOverwriter}
 Elevator state: {this.state}{DefaultWhiteSpaceOverwriter}
 Agents inside elevator: {this.agentsBeingProcessed.Count}{DefaultWhiteSpaceOverwriter}
 Next stops: {nextStops}{DefaultWhiteSpaceOverwriter}
@@ -264,6 +269,7 @@ Log ({firstLineIndex} / {allLines.Count}):{DefaultWhiteSpaceOverwriter}
                 : true;
             Console.CursorVisible = false;
 
+            Console.Clear();
             try
             {
                 while (this.state != ElevatorState.Closed)
